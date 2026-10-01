@@ -72,24 +72,26 @@ def partition(
 ) -> list[list[tuple[str, int]]]:
     """
     1. Sort nodes descending by Gbps.
-    2. Assign via snake (zigzag) round-robin across bins — naturally balances heavy/light nodes.
-    3. Local swap pass: repeatedly swap one node between the max-sum and min-sum bins
-       if it reduces variance, until no improving swap exists.
+    2. Fill groups of exactly bin_size by snake (zigzag) round-robin.
+       The lightest leftover nodes stay in the last group.
+    3. Local swap pass: repeatedly swap one node between the max-sum and min-sum
+       full groups if it reduces their difference, until no improving swap exists.
     """
-    n_bins = (len(nodes) + bin_size - 1) // bin_size
     sorted_nodes = sorted(nodes, key=lambda x: -x[1])
-    bins = _build_snake_bins(sorted_nodes, n_bins)
+    n_full = len(sorted_nodes) // bin_size
+    if n_full == 0:
+        return [sorted_nodes]
 
-    full_bins = (
-        list(range(n_bins - 1)) if len(nodes) % bin_size != 0 else list(range(n_bins))
-    )
+    full_nodes = sorted_nodes[: n_full * bin_size]
+    partial_nodes = sorted_nodes[n_full * bin_size :]
+    bins = _build_snake_bins(full_nodes, n_full)
 
     improved = True
     while improved:
         improved = False
         sums = [sum(g for _, g in b) for b in bins]
-        max_idx = max(full_bins, key=lambda i, s=sums: s[i])
-        min_idx = min(full_bins, key=lambda i, s=sums: s[i])
+        max_idx = max(range(n_full), key=lambda i, s=sums: s[i])
+        min_idx = min(range(n_full), key=lambda i, s=sums: s[i])
         if max_idx == min_idx:
             break
 
@@ -104,13 +106,18 @@ def partition(
             )
             improved = True
 
+    if partial_nodes:
+        bins.append(partial_nodes)
     return bins
 
 
 def compute_target(nodes: list[tuple[str, int]], bin_size: int) -> int:
-    total = sum(g for _, g in nodes)
-    n_bins = len(nodes) // bin_size
-    return round(total / n_bins)
+    ordered = sorted(nodes, key=lambda x: -x[1])
+    n_full = len(ordered) // bin_size
+    if n_full == 0:
+        return sum(g for _, g in ordered)
+    full = ordered[: n_full * bin_size]
+    return round(sum(g for _, g in full) / n_full)
 
 
 def print_summary(
